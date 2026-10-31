@@ -30,6 +30,7 @@ public final class MagicOrbEffect extends VFXEffect {
 
     private final List<RingDefinition> rings = new ArrayList<>();
     private final List<Vector> corePoints = new ArrayList<>();
+    private final List<Vector> coreWork = new ArrayList<>();
     private final List<Vector> shellAnchors = new ArrayList<>();
     private final List<Vector> trailAnchors = new ArrayList<>();
     private final ThreadLocalRandom random = ThreadLocalRandom.current();
@@ -55,6 +56,7 @@ public final class MagicOrbEffect extends VFXEffect {
 
         this.rings.clear();
         this.corePoints.clear();
+        this.coreWork.clear();
         this.shellAnchors.clear();
         this.trailAnchors.clear();
 
@@ -73,8 +75,10 @@ public final class MagicOrbEffect extends VFXEffect {
                     this.random.nextDouble(-0.05D, 0.05D)
             );
             final Color color = PALETTE.get(index % PALETTE.size());
+            final List<Vector> ringPoints = VFXMath.ellipse(radiusX, radiusZ, points);
             this.rings.add(new RingDefinition(
-                    VFXMath.ellipse(radiusX, radiusZ, points),
+                    ringPoints,
+                    VFXMath.copyOf(ringPoints),
                     baseRotation,
                     rotationSpeed,
                     this.random.nextDouble(0.04D, 0.16D),
@@ -86,6 +90,7 @@ public final class MagicOrbEffect extends VFXEffect {
         }
 
         this.corePoints.addAll(VFXMath.randomSphereCloud(1.0D, quality.scalePoints(26)));
+        this.coreWork.addAll(VFXMath.copyOf(this.corePoints));
         this.shellAnchors.addAll(VFXMath.sphere(1.0D, quality.scalePoints(16)));
         this.trailAnchors.addAll(VFXMath.circle(1.0D, switch (quality) {
             case LOW -> 3;
@@ -205,31 +210,46 @@ public final class MagicOrbEffect extends VFXEffect {
     }
 
     private void renderRings(final VFXContext context, final World world, final List<Player> viewers, final double radius) {
+        final int age = age();
         for (int ringIndex = 0; ringIndex < this.rings.size(); ringIndex++) {
             final RingDefinition ring = this.rings.get(ringIndex);
-            final List<Vector> transformed = new ArrayList<>(ring.basePoints().size());
+            final List<Vector> base = ring.basePoints();
+            final List<Vector> work = ring.workPoints();
+            final double time = age + (ringIndex * 3.0D);
 
-            for (int pointIndex = 0; pointIndex < ring.basePoints().size(); pointIndex++) {
-                final Vector point = ring.basePoints().get(pointIndex);
-                final double time = age() + (ringIndex * 3.0D);
+            // Trig for the three axis rotations is computed once per ring per tick, not once per point.
+            final double angleX = ring.baseRotation().getX() + (ring.rotationSpeed().getX() * age);
+            final double angleY = ring.baseRotation().getY() + (ring.rotationSpeed().getY() * age);
+            final double angleZ = ring.baseRotation().getZ() + (ring.rotationSpeed().getZ() * age);
+            final double cosX = Math.cos(angleX);
+            final double sinX = Math.sin(angleX);
+            final double cosY = Math.cos(angleY);
+            final double sinY = Math.sin(angleY);
+            final double cosZ = Math.cos(angleZ);
+            final double sinZ = Math.sin(angleZ);
+
+            for (int pointIndex = 0; pointIndex < base.size(); pointIndex++) {
+                final Vector point = base.get(pointIndex);
                 final double distortion = 1.0D
                         + (Math.sin((pointIndex * 0.42D) + (time * 0.11D) + ring.phase()) * ring.distortion())
                         + (Math.cos((point.getX() * 2.4D) + (time * 0.07D)) * ring.distortion() * 0.55D);
 
-                Vector result = new Vector(
-                        point.getX() * distortion,
-                        Math.sin((time * 0.12D) + pointIndex + ring.phase()) * ring.verticalWarp(),
-                        point.getZ() * distortion
-                );
+                double x = point.getX() * distortion;
+                double y = Math.sin((time * 0.12D) + pointIndex + ring.phase()) * ring.verticalWarp();
+                double z = point.getZ() * distortion;
 
-                result = VFXMath.rotateX(result, ring.baseRotation().getX() + (ring.rotationSpeed().getX() * age()));
-                result = VFXMath.rotateY(result, ring.baseRotation().getY() + (ring.rotationSpeed().getY() * age()));
-                result = VFXMath.rotateZ(result, ring.baseRotation().getZ() + (ring.rotationSpeed().getZ() * age()));
-                result.multiply(radius);
-                transformed.add(result);
+                // Same X -> Y -> Z order as VFXMath.rotateX/Y/Z, applied in place.
+                final double y1 = (y * cosX) - (z * sinX);
+                final double z1 = (y * sinX) + (z * cosX);
+                final double x2 = (x * cosY) + (z1 * sinY);
+                final double z2 = (-x * sinY) + (z1 * cosY);
+                final double x3 = (x2 * cosZ) - (y1 * sinZ);
+                final double y3 = (x2 * sinZ) + (y1 * cosZ);
+
+                work.get(pointIndex).setX(x3 * radius).setY(y3 * radius).setZ(z2 * radius);
             }
 
-            VFXRenderer.particles(transformed)
+            VFXRenderer.particles(work)
                     .particle(Particle.DUST)
                     .data(VFXColor.dust(ring.color(), ring.size()))
                     .force(true)
@@ -239,12 +259,15 @@ public final class MagicOrbEffect extends VFXEffect {
 
     private void renderCore(final VFXContext context, final World world, final List<Player> viewers, final double radius) {
         final double coreRadius = Math.max(0.4D, (radius * 0.18D) + (Math.sin(age() * 0.35D) * 0.08D));
-        final List<Vector> scaledCore = new ArrayList<>(this.corePoints.size());
-        for (final Vector point : this.corePoints) {
-            scaledCore.add(point.clone().multiply(coreRadius));
+        for (int index = 0; index < this.corePoints.size(); index++) {
+            final Vector source = this.corePoints.get(index);
+            this.coreWork.get(index)
+                    .setX(source.getX() * coreRadius)
+                    .setY(source.getY() * coreRadius)
+                    .setZ(source.getZ() * coreRadius);
         }
 
-        VFXRenderer.particles(scaledCore)
+        VFXRenderer.particles(this.coreWork)
                 .particle(Particle.DUST_COLOR_TRANSITION)
                 .data(VFXColor.transition(VFXColor.rgb(255, 255, 255), VFXColor.rgb(150, 120, 255), 1.6F))
                 .force(true)
@@ -259,17 +282,19 @@ public final class MagicOrbEffect extends VFXEffect {
             case ULTRA -> 9;
         };
 
+        final List<Vector> sparks = new ArrayList<>(sparkCount);
         for (int index = 0; index < sparkCount; index++) {
             Vector spark = this.shellAnchors.get(index % this.shellAnchors.size()).clone();
-            spark = VFXMath.rotateY(spark, (age() * 0.07D) + (index * 0.9D));
-            spark = VFXMath.rotateX(spark, (age() * 0.05D) + (index * 0.45D));
+            VFXMath.rotateYInPlace(spark, (age() * 0.07D) + (index * 0.9D));
+            VFXMath.rotateXInPlace(spark, (age() * 0.05D) + (index * 0.45D));
             spark.multiply(radius * (0.55D + (0.08D * Math.sin((age() * 0.23D) + index))));
-
-            VFXRenderer.particles(List.of(spark))
-                    .particle(Particle.END_ROD)
-                    .force(true)
-                    .render(world, originMutable(), viewers, context.quality());
+            sparks.add(spark);
         }
+
+        VFXRenderer.particles(sparks)
+                .particle(Particle.END_ROD)
+                .force(true)
+                .render(world, originMutable(), viewers, context.quality());
     }
 
     private void renderElectricalShell(final VFXContext context, final World world, final List<Player> viewers, final double radius) {
@@ -337,6 +362,10 @@ public final class MagicOrbEffect extends VFXEffect {
         }
     }
 
+    /**
+     * Streams of energy falling from underneath the orb. Each stream has a few particles at staggered phases that
+     * travel downward and wrap, so the fall is animated rather than a static line. One batched render per tick.
+     */
     private void renderUndersideDrips(final VFXContext context, final World world, final List<Player> viewers, final double radius) {
         final int drips = switch (context.quality()) {
             case LOW -> 2;
@@ -344,19 +373,25 @@ public final class MagicOrbEffect extends VFXEffect {
             case HIGH -> 4;
             case ULTRA -> 5;
         };
+        final int perStream = context.quality().scalePoints(3);
+        final double fallDistance = 2.5D + (radius * 0.4D);
 
+        final List<Vector> points = new ArrayList<>(drips * perStream);
         for (int index = 0; index < drips; index++) {
             final double angle = ((VFXMath.TAU / drips) * index) + (age() * 0.03D);
-            final Vector anchor = new Vector(Math.cos(angle) * radius * 0.35D, -radius * 0.58D, Math.sin(angle) * radius * 0.35D);
-            final Vector end = anchor.clone().add(new Vector(0.0D, -1.2D - (radius * 0.08D), 0.0D));
-
-            VFXRenderer.particles(VFXMath.line(anchor, end, context.quality().scalePoints(6)))
-                    .particle(Particle.DUST)
-                    .data(VFXColor.dust(VFXColor.rgb(130, 90, 255), 0.8F))
-                    .randomChance(0.85D)
-                    .force(true)
-                    .render(world, originMutable(), viewers, context.quality());
+            final double x = Math.cos(angle) * radius * 0.35D;
+            final double z = Math.sin(angle) * radius * 0.35D;
+            for (int particle = 0; particle < perStream; particle++) {
+                final double phase = ((age() * 0.045D) + ((double) particle / perStream) + (index * 0.37D)) % 1.0D;
+                points.add(new Vector(x, (-radius * 0.58D) - (phase * fallDistance), z));
+            }
         }
+
+        VFXRenderer.particles(points)
+                .particle(Particle.DUST)
+                .data(VFXColor.dust(VFXColor.rgb(130, 90, 255), 0.8F))
+                .force(true)
+                .render(world, originMutable(), viewers, context.quality());
     }
 
     private void renderVerticalTrails(final VFXContext context, final World world, final List<Player> viewers, final double radius) {
@@ -391,6 +426,7 @@ public final class MagicOrbEffect extends VFXEffect {
 
     private record RingDefinition(
             List<Vector> basePoints,
+            List<Vector> workPoints,
             Vector baseRotation,
             Vector rotationSpeed,
             double distortion,

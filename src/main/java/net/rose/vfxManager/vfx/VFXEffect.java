@@ -3,6 +3,7 @@ package net.rose.vfxManager.vfx;
 import net.rose.vfxManager.vfx.animation.Timeline;
 import org.bukkit.Location;
 import org.bukkit.World;
+import org.bukkit.entity.Display;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.util.Vector;
@@ -26,6 +27,7 @@ public abstract class VFXEffect {
     private int age;
     private int duration = 60;
     private boolean running;
+    private boolean rejected;
     private double renderDistance = 64.0D;
     private double boundingRadius = 4.0D;
     private VFXQuality qualityOverride;
@@ -49,6 +51,11 @@ public abstract class VFXEffect {
 
     public final int duration() {
         return this.duration;
+    }
+
+    /** True if the last {@link #start()} was refused because the manager's active-effect limit was reached. */
+    public final boolean wasRejected() {
+        return this.rejected;
     }
 
     public final boolean isRunning() {
@@ -122,8 +129,11 @@ public abstract class VFXEffect {
 
         this.age = 0;
         this.running = true;
+        this.rejected = false;
         if (!this.manager.registerEffect(this)) {
+            // Over the manager's effect limit: the effect never ran, and onStart()/onStop() are not called.
             this.running = false;
+            this.rejected = true;
             return this;
         }
 
@@ -230,6 +240,17 @@ public abstract class VFXEffect {
     protected final void trackEntity(final Entity entity) {
         this.trackedEntities.add(entity);
         this.manager.trackManagedEntity(entity);
+    }
+
+    /**
+     * Registers a {@link VFXDisplay} owned by this effect. It is removed automatically when the effect stops,
+     * the plugin disables or the world becomes unavailable, so effect code never has to remove it by hand.
+     *
+     * @return the same display, for chaining: {@code var d = trackDisplay(VFXDisplay.item(manager(), loc, item));}
+     */
+    protected final <T extends Display> VFXDisplay<T> trackDisplay(final VFXDisplay<T> display) {
+        this.cleanupTasks.add(display::remove);
+        return display;
     }
 
     protected final void cleanupTask(final Runnable runnable) {

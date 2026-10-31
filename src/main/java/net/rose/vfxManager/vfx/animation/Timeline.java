@@ -41,11 +41,22 @@ public final class Timeline {
         return this;
     }
 
+    /** Removes every scheduled event and loop section. */
+    public Timeline clear() {
+        this.oneShotEvents.clear();
+        this.repeatingEvents.clear();
+        this.loopSection = null;
+        return this;
+    }
+
     public void tick(final int rawTick) {
         final int virtualTick = toVirtualTick(rawTick);
         final List<Runnable> actions = this.oneShotEvents.get(virtualTick);
         if (actions != null) {
-            actions.forEach(Runnable::run);
+            // Iterate a copy so an action may safely schedule more events with at().
+            for (final Runnable action : List.copyOf(actions)) {
+                action.run();
+            }
         }
 
         for (final RepeatingEvent repeatingEvent : this.repeatingEvents) {
@@ -64,8 +75,10 @@ public final class Timeline {
         final int extraTicks = rawTick - this.loopSection.startTickInclusive;
         final int repeatsElapsed = extraTicks / loopLength;
 
+        // Loop finished: time carries on past the end of the section instead of freezing on its last tick,
+        // which would re-fire the events at that tick every single game tick.
         if (this.loopSection.maxRepeats >= 0 && repeatsElapsed > this.loopSection.maxRepeats) {
-            return this.loopSection.endTickInclusive;
+            return rawTick - (loopLength * this.loopSection.maxRepeats);
         }
 
         return this.loopSection.startTickInclusive + (extraTicks % loopLength);

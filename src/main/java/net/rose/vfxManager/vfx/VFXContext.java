@@ -16,11 +16,37 @@ public record VFXContext(
         VFXQuality quality,
         boolean debug,
         double renderDistanceSquared,
-        Collection<Player> viewers
+        Collection<Player> viewers,
+        boolean preFiltered
 ) {
+    /** Convenience constructor for hand-built contexts; viewers are filtered on every {@link #viewersWithinRange()}. */
+    public VFXContext(
+            final Plugin plugin,
+            final World world,
+            final Location origin,
+            final int tick,
+            final VFXQuality quality,
+            final boolean debug,
+            final double renderDistanceSquared,
+            final Collection<Player> viewers
+    ) {
+        this(plugin, world, origin, tick, quality, debug, renderDistanceSquared, viewers, false);
+    }
+
+    /**
+     * Viewers that are online, in this world and inside the render distance.
+     * <p>
+     * {@link VFXManager#createContext} already filters by world and distance once per tick, so this returns that
+     * list directly instead of re-filtering (and calling {@code Player#getLocation()}) on every render call.
+     * Contexts built by hand with an arbitrary collection still get the full filter.
+     */
     public List<Player> viewersWithinRange() {
         if (this.viewers.isEmpty()) {
             return List.of();
+        }
+
+        if (this.preFiltered && this.viewers instanceof List<Player> list) {
+            return list;
         }
 
         return this.viewers.stream()

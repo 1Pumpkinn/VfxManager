@@ -1,5 +1,8 @@
 package net.rose.vfxManager.vfx;
 
+import net.rose.vfxManager.vfx.effects.BeamEffect;
+import net.rose.vfxManager.vfx.effects.DisplayRingEffect;
+import net.rose.vfxManager.vfx.effects.MagicCircleEffect;
 import net.rose.vfxManager.vfx.effects.MagicOrbEffect;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -19,19 +22,23 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.logging.Level;
 
 public final class VFXManager implements Listener {
     private final Plugin plugin;
     private final Set<VFXEffect> activeEffects = new LinkedHashSet<>();
     private final Set<VFXEffect> pendingAdditions = new LinkedHashSet<>();
     private final Set<VFXEffect> pendingRemovals = new LinkedHashSet<>();
-    private final Set<UUID> managedEntities = new LinkedHashSet<>();
+    // Every Display/entity spawned through the framework. Removed on world unload and plugin shutdown.
+    private final Set<Entity> managedEntities = new LinkedHashSet<>();
     private final VFXDebugRenderer debugRenderer = new VFXDebugRenderer();
     private BukkitTask tickTask;
     private VFXQuality quality = VFXQuality.HIGH;
     private int maxActiveEffects = 512;
     private boolean debugMode;
     private int tick;
+    private long rejectedEffects;
+    private int lastRejectionLogTick = -1000;
 
     public VFXManager(final Plugin plugin) {
         this.plugin = plugin;
@@ -76,8 +83,28 @@ public final class VFXManager implements Listener {
         return new MagicOrbEffect(this, location);
     }
 
-    public VFXBeam beam(final Location start, final Location end) {
+    /** Fluent entry point: {@code vfx.beam(start, end).width(0.4).duration(20).play()}. */
+    public BeamEffect beam(final Location start, final Location end) {
+        return new BeamEffect(this, start, end);
+    }
+
+    /** Fluent entry point: {@code vfx.magicCircle(loc).radius(5).rings(3).duration(60).play()}. */
+    public MagicCircleEffect magicCircle(final Location location) {
+        return new MagicCircleEffect(this, location);
+    }
+
+    /** Fluent entry point: {@code vfx.displayRing(loc).radius(3).count(8).model(item).duration(80).play()}. */
+    public DisplayRingEffect displayRing(final Location location) {
+        return new DisplayRingEffect(this, location);
+    }
+
+    /** Raw, manually updated beam display for callers that drive {@link VFXBeam#update()} themselves. */
+    public VFXBeam rawBeam(final Location start, final Location end) {
         return new VFXBeam(this, start, end);
+    }
+
+    public long rejectedEffectCount() {
+        return this.rejectedEffects;
     }
 
     public int activeEffectCount() {
@@ -111,11 +138,19 @@ public final class VFXManager implements Listener {
         this.pendingAdditions.clear();
         this.pendingRemovals.clear();
 
-        cleanupManagedEntities();
+        // Safety net: anything an effect failed to clean up itself must not outlive the plugin.
+        removeAllManagedEntities();
     }
 
     public boolean registerEffect(final VFXEffect effect) {
         if ((this.activeEffects.size() + this.pendingAdditions.size()) >= this.maxActiveEffects) {
+            this.rejectedEffects++;
+            // Throttled to one line per 10 seconds so a spammed ability can't flood the console.
+            if ((this.tick - this.lastRejectionLogTick) >= 200) {
+                this.lastRejectionLogTick = this.tick;
+                this.plugin.getLogger().warning("VFX effect limit (" + this.maxActiveEffects + ") reached; dropped "
+                        + effect.getClass().getSimpleName() + " (" + this.rejectedEffects + " dropped in total).");
+            }
             return false;
         }
 
@@ -130,7 +165,11 @@ public final class VFXManager implements Listener {
     }
 
     public void trackManagedEntity(final Entity entity) {
-        this.managedEntities.add(entity.getUniqueId());
+        this.managedEntities.add(entity);
+    }
+
+    public int managedEntityCount() {
+        return this.managedEntities.size();
     }
 
     public VFXContext createContext(final VFXEffect effect) {
@@ -145,7 +184,8 @@ public final class VFXManager implements Listener {
                     effect.quality(),
                     this.debugMode,
                     effect.renderDistanceSquared(),
-                    List.of()
+                    List.of(),
+                    true
             );
         }
 
@@ -157,7 +197,8 @@ public final class VFXManager implements Listener {
                 effect.quality(),
                 this.debugMode,
                 effect.renderDistanceSquared(),
-                resolveViewers(effect)
+                resolveViewers(effect),
+                true
         );
     }
 
@@ -197,11 +238,24 @@ public final class VFXManager implements Listener {
     @EventHandler
     public void onWorldUnload(final WorldUnloadEvent event) {
         final World world = event.getWorld();
-        for (final VFXEffect effect : new ArrayList<>(this.activeEffects)) {
+        final List<VFXEffect> affected = new ArrayList<>(this.activeEffects);
+        affected.addAll(this.pendingAdditions);
+        for (final VFXEffect effect : affected) {
             if (world.equals(effect.world())) {
                 effect.stop();
             }
         }
+
+        // Remove any displays in that world that an effect did not clean up itself.
+        this.managedEntities.removeIf(entity -> {
+            if (!world.equals(entity.getWorld())) {
+                return false;
+            }
+            if (entity.isValid()) {
+                entity.remove();
+            }
+            return true;
+        });
     }
 
     private void tick() {
@@ -214,7 +268,7 @@ public final class VFXManager implements Listener {
             try {
                 effect.tick();
             } catch (final Exception exception) {
-                this.plugin.getLogger().warning("Failed to tick VFX effect " + effect.getClass().getSimpleName() + ": " + exception.getMessage());
+                this.plugin.getLogger().log(Level.WARNING, "Failed to tick VFX effect " + effect.getClass().getSimpleName(), exception);
                 effect.stop();
             }
         }
@@ -235,14 +289,17 @@ public final class VFXManager implements Listener {
         }
     }
 
+    /** Drops references to entities that are already gone, so the set cannot grow without bound. */
     private void cleanupManagedEntities() {
-        final Iterator<UUID> iterator = this.managedEntities.iterator();
-        while (iterator.hasNext()) {
-            final UUID entityId = iterator.next();
-            final Entity entity = Bukkit.getEntity(entityId);
-            if (entity == null || !entity.isValid()) {
-                iterator.remove();
+        this.managedEntities.removeIf(entity -> !entity.isValid());
+    }
+
+    private void removeAllManagedEntities() {
+        for (final Entity entity : this.managedEntities) {
+            if (entity.isValid()) {
+                entity.remove();
             }
         }
+        this.managedEntities.clear();
     }
 }

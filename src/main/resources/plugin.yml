@@ -7,3 +7,25 @@ api-version: '26.2'
 load: POSTWORLD
 
 authors: [ PumpkinDev ]
+
+commands:
+  vfx:
+    description: Test and debug the VFX framework
+    usage: /vfx <orb|circle|beam|displays|quality|debug|status>
+    permission: vfx.admin
+
+permissions:
+  vfx.admin:
+    description: Use the /vfx test command
+    default: op
+
+commands:
+  vfx:
+    description: Test and debug the VFX framework
+    usage: /vfx <orb|circle|beam|displays|quality|debug|status>
+    permission: vfx.admin
+
+permissions:
+  vfx.admin:
+    description: Use the /vfx test command
+    default: op

@@ -141,6 +141,11 @@ public final class VFXMath {
             final double progress = (double) segment / (safeHeightSegments - 1);
             final double ringRadius = baseRadius * (1.0D - progress);
             final double y = height * progress;
+            if (ringRadius < 1.0E-4D) {
+                // Apex: a zero-radius ring would stack radialPoints particles on one spot.
+                points.add(new Vector(0.0D, y, 0.0D));
+                continue;
+            }
             points.addAll(translate(circle(ringRadius, radialPoints), new Vector(0.0D, y, 0.0D)));
         }
 
@@ -247,6 +252,43 @@ public final class VFXMath {
         final Vector term2 = normalizedAxis.clone().crossProduct(vector.clone()).multiply(sin);
         final Vector term3 = normalizedAxis.clone().multiply(dot * (1.0D - cos));
         return term1.add(term2).add(term3);
+    }
+
+    /**
+     * In-place variants of {@link #rotateX}/{@link #rotateY}/{@link #rotateZ}. They mutate and return the same
+     * vector, so hot render loops can rotate preallocated buffers without creating garbage.
+     */
+    public static Vector rotateXInPlace(final Vector vector, final double angleRadians) {
+        final double cos = Math.cos(angleRadians);
+        final double sin = Math.sin(angleRadians);
+        final double y = (vector.getY() * cos) - (vector.getZ() * sin);
+        final double z = (vector.getY() * sin) + (vector.getZ() * cos);
+        return vector.setY(y).setZ(z);
+    }
+
+    public static Vector rotateYInPlace(final Vector vector, final double angleRadians) {
+        final double cos = Math.cos(angleRadians);
+        final double sin = Math.sin(angleRadians);
+        final double x = (vector.getX() * cos) + (vector.getZ() * sin);
+        final double z = (-vector.getX() * sin) + (vector.getZ() * cos);
+        return vector.setX(x).setZ(z);
+    }
+
+    public static Vector rotateZInPlace(final Vector vector, final double angleRadians) {
+        final double cos = Math.cos(angleRadians);
+        final double sin = Math.sin(angleRadians);
+        final double x = (vector.getX() * cos) - (vector.getY() * sin);
+        final double y = (vector.getX() * sin) + (vector.getY() * cos);
+        return vector.setX(x).setY(y);
+    }
+
+    /** Copies {@code points} into a new list of independent vectors, e.g. to build a reusable work buffer. */
+    public static List<Vector> copyOf(final List<Vector> points) {
+        final List<Vector> copy = new ArrayList<>(points.size());
+        for (final Vector point : points) {
+            copy.add(point.clone());
+        }
+        return copy;
     }
 
     public static List<Vector> translate(final List<Vector> points, final Vector translation) {

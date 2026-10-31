@@ -14,6 +14,13 @@ public final class VfxManager extends JavaPlugin {
                 .maxActiveEffects(512)
                 .debugMode(false);
         this.vfxManager.start();
+
+        final VFXCommand command = new VFXCommand(this.vfxManager);
+        final org.bukkit.command.PluginCommand pluginCommand = getCommand("vfx");
+        if (pluginCommand != null) {
+            pluginCommand.setExecutor(command);
+            pluginCommand.setTabCompleter(command);
+        }
     }
 
     @Override
