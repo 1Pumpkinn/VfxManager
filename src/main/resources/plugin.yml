@@ -1,0 +1,9 @@
+name: VfxManager
+version: '${version}'
+
+main: net.rose.vfxManager.VfxManager
+paper-plugin-loader: net.rose.vfxManager.VfxManagerLoader
+api-version: '26.2'
+load: POSTWORLD
+
+authors: [ PumpkinDev ]
