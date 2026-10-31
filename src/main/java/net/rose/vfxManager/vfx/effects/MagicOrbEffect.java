@@ -155,7 +155,7 @@ public final class MagicOrbEffect extends VFXEffect {
                         0.0D,
                         0.0D,
                         0.0D,
-                        null,
+                        Color.WHITE,
                         true
                 );
             }
@@ -198,7 +198,7 @@ public final class MagicOrbEffect extends VFXEffect {
                     0.2D,
                     0.2D,
                     0.0D,
-                    null,
+                    Color.WHITE,
                     true
             );
         }

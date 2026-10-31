@@ -11,7 +11,7 @@ authors: [ PumpkinDev ]
 commands:
   vfx:
     description: Test and debug the VFX framework
-    usage: /vfx <orb|circle|beam|displays|quality|debug|status>
+    usage: /vfx <orb|circle|beam|displays|spire|quality|debug|status>
     permission: vfx.admin
 
 permissions:

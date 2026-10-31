@@ -17,8 +17,8 @@ vfx/
 ├── VFXQuality        LOW / MEDIUM / HIGH / ULTRA
 ├── VFXDebugRenderer  origin, axes, control points, bounding sphere
 ├── animation/        Easing, Timeline
-├── shape/            VFXShape + Circle/Ellipse/Sphere/Hemisphere/Line/Arc/Spiral/Helix/Cone/Cylinder/Bezier/RandomCloud
-└── effects/          MagicOrbEffect, MagicCircleEffect, BeamEffect, DisplayRingEffect
+├── shape/            VFXShape + Circle/Ellipse/Sphere/Hemisphere/Line/Arc/Spiral/Helix/Cone/Cylinder/Bezier/RandomCloud/Polyhedron/RayCone
+└── effects/          MagicOrbEffect, MagicCircleEffect, BeamEffect, DisplayRingEffect, ArcaneSpireEffect
 ```
 
 Key rules:
@@ -46,6 +46,10 @@ vfx.magicCircle(location)
 vfx.beam(start, end).width(0.4).duration(20).play();
 
 vfx.displayRing(location).radius(3).count(8).model(new ItemStack(Material.AMETHYST_SHARD)).duration(80).play();
+
+vfx.arcaneSpire(topLocation)   // top of the spire; rays converge `height` blocks below
+        .radius(2.2).height(14).color(255, 110, 200).duration(140)
+        .play();
 
 MagicOrbEffect orb = new MagicOrbEffect(vfx, player.getLocation().add(0, 5, 0));
 orb.setDuration(100);
@@ -103,7 +107,7 @@ points (yellow, via `debugPoints()`), a three-ring bounding sphere, and beam end
 
 ## Test command
 
-`/vfx <orb|circle|beam|displays|quality|debug|status>` (permission `vfx.admin`, ops by default).
+`/vfx <orb|circle|beam|displays|spire|quality|debug|status>` (permission `vfx.admin`, ops by default).
 
 ## Build
 

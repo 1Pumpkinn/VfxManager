@@ -1,5 +1,6 @@
 package net.rose.vfxManager.vfx;
 
+import net.rose.vfxManager.vfx.effects.ArcaneSpireEffect;
 import net.rose.vfxManager.vfx.effects.BeamEffect;
 import net.rose.vfxManager.vfx.effects.DisplayRingEffect;
 import net.rose.vfxManager.vfx.effects.MagicCircleEffect;
@@ -96,6 +97,11 @@ public final class VFXManager implements Listener {
     /** Fluent entry point: {@code vfx.displayRing(loc).radius(3).count(8).model(item).duration(80).play()}. */
     public DisplayRingEffect displayRing(final Location location) {
         return new DisplayRingEffect(this, location);
+    }
+
+    /** Fluent entry point: {@code vfx.arcaneSpire(top).radius(2.2).height(14).color(255, 110, 200).duration(140).play()}. */
+    public ArcaneSpireEffect arcaneSpire(final Location top) {
+        return new ArcaneSpireEffect(this, top);
     }
 
     /** Raw, manually updated beam display for callers that drive {@link VFXBeam#update()} themselves. */

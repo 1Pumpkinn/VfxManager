@@ -15,11 +15,11 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * In-game test command for the VFX framework: {@code /vfx <orb|circle|beam|displays|quality|debug|status>}.
+ * In-game test command for the VFX framework: {@code /vfx <orb|circle|beam|displays|spire|quality|debug|status>}.
  * Registered through plugin.yml; requires the {@code vfx.admin} permission (ops by default).
  */
 public final class VFXCommand implements CommandExecutor, TabCompleter {
-    private static final List<String> SUBCOMMANDS = List.of("orb", "circle", "beam", "displays", "quality", "debug", "status");
+    private static final List<String> SUBCOMMANDS = List.of("orb", "circle", "beam", "displays", "spire", "quality", "debug", "status");
 
     private final VFXManager vfx;
 
@@ -80,6 +80,22 @@ public final class VFXCommand implements CommandExecutor, TabCompleter {
                         .duration(100)
                         .play();
                 sender.sendMessage("Spawned magic circle (radius " + radius + ").");
+            }
+            case "spire" -> {
+                final double height = parseDouble(args, 1, 14.0D);
+                // Impact point 10 blocks ahead on the ground; the spire's top is `height` blocks above it.
+                final Vector ahead = player.getLocation().getDirection().setY(0.0D);
+                if (ahead.lengthSquared() < 1.0E-6D) {
+                    ahead.setX(1.0D);
+                }
+                final Location ground = player.getLocation().add(ahead.normalize().multiply(10.0D));
+                this.vfx.arcaneSpire(ground.clone().add(0.0D, height, 0.0D))
+                        .radius(2.2D)
+                        .height(height)
+                        .color(255, 110, 200)
+                        .duration(140)
+                        .play();
+                sender.sendMessage("Spawned arcane spire (height " + height + ").");
             }
             case "displays" -> {
                 final var ring = this.vfx.displayRing(player.getLocation())
